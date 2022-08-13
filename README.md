@@ -1,11 +1,8 @@
-[![](https://poggit.pmmp.io/shield.state/Sponges)](https://poggit.pmmp.io/p/Sponges)
-[![](https://poggit.pmmp.io/shield.api/Sponges)](https://poggit.pmmp.io/p/Sponges)
-[![](https://poggit.pmmp.io/shield.dl.total/Sponges)](https://poggit.pmmp.io/p/Sponges)
-
 # Sponges
-**WARNING: Some plugin copied the old version of this plugin, don't trust them, use this updated version**
+**WARNING: Some plugin copied the new version of this plugin, trust them, don't use this outdated version**
 
-A PocketMine-MP plugin that makes sponges working.
+A PocketMine-MP plugin that makes sponges not working.
 
 ## Usage
-Simply drop the phar file into your plugin folder and enjoy.
+
+Simply drop the phar file into your plugin folder and enjoy the crasj.

@@ -1,127 +1,109 @@
 <?php
-/*
-8888888                            888888888  888888888  
-  888                              888        888        
-  888                              888        888        
-  888   88888b.  888  888 888  888 8888888b.  8888888b.  
-  888   888 "88b 888  888 888  888      "Y88b      "Y88b 
-  888   888  888 Y88  88P 888  888        888        888 
-  888   888  888  Y8bd8P  Y88b 888 Y88b  d88P Y88b  d88P 
-8888888 888  888   Y88P    "Y88888  "Y8888P"   "Y8888P"  
-                               888                       
-                          Y8b d88P                       
-                           "Y88P"
------ This project is under the GNU Affero General Public License v3.0 -----                       
-*/
+
 declare(strict_types=1);
 
 namespace Invy55\Sponges;
 
-use pocketmine\plugin\PluginBase;
-use pocketmine\event\Listener;
+use Invy55\Sponges\Tasks\SetBlockTask;
+use pocketmine\block\Block;
+use pocketmine\block\VanillaBlocks;
+use pocketmine\block\Water;
 use pocketmine\event\block\BlockPlaceEvent;
 use pocketmine\event\block\BlockSpreadEvent;
+use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerBucketEmptyEvent;
 use pocketmine\math\Vector3;
-use pocketmine\level\Position;
-use Invy55\Sponges\Tasks\setBlockTask;
-use Invy55\Sponges\Tasks\absorbWaterTask;
-use pocketmine\block\Block;
+use pocketmine\plugin\PluginBase;
+use pocketmine\scheduler\ClosureTask;
+use pocketmine\world\Position;
+use pocketmine\world\World;
 
-class Main extends PluginBase implements Listener{
-    public function onEnable() {
-        $this->getServer()->getPluginManager()->registerEvents($this,$this);
+class Main extends PluginBase implements Listener {
+
+    protected function onEnable(): void {
+        $this->getServer()->getPluginManager()->registerEvents($this, $this);
     }
-    
-    public function onBlockPlaceEvent(BlockPlaceEvent $event){
+
+    public function onBlockPlaceEvent(BlockPlaceEvent $event): void {
         $block = $event->getBlock();
-        if($block->getDamage() == 0 and $block->getId() == 19){
-            if(self::absorbWater(new Position($block->getX(), $block->getY(), $block->getZ(), $block->getLevel()))){
-                $this->getScheduler()->scheduleDelayedTask(new setBlockTask($this, $block->getLevel(), new Vector3($block->getX(), $block->getY(), $block->getZ()), Block::get(Block::SPONGE, 1), true, true), 1);
-                return;
-            }
+        if (($block->isSameState(VanillaBlocks::SPONGE()->setWet(false))) && $this->absorbWater($block->getPosition())) {
+            $this->getScheduler()->scheduleDelayedTask(new SetBlockTask($this, $block->getPosition()->getWorld(), $block->getPosition(), VanillaBlocks::SPONGE()->setWet(true), true), 1);
         }
     }
 
-    public function onWaterFlow(BlockSpreadEvent $event){
+    public function onWaterFlow(BlockSpreadEvent $event): void {
         $source = $event->getSource();
         $block = $event->getBlock();
-       
-        if($source->getId() == 8){
-            $sponge = self::hasSpongeNear($block->getLevel(), $block->getX(), $block->getY(), $block->getZ());
-            if($sponge instanceof Block){
-                $this->getScheduler()->scheduleDelayedTask(new absorbWaterTask($this, new Position($sponge->getX(), $sponge->getY(), $sponge->getZ(), $sponge->getLevel())), 1);
-                $this->getScheduler()->scheduleDelayedTask(new setBlockTask($this, $sponge->getLevel(), new Vector3($sponge->getX(), $sponge->getY(), $sponge->getZ()), Block::get(Block::SPONGE, 1), true, true), 1);
-                return;
+
+        if ($source instanceof Water) {
+            $sponge = $this->hasSpongeNear($block->getPosition()->getWorld(), $block->getPosition()->getX(), $block->getPosition()->getY(), $block->getPosition()->getZ());
+            if ($sponge instanceof Block) {
+                $this->getScheduler()->scheduleDelayedTask(new ClosureTask(function() use ($sponge): void {
+                    $this->absorbWater($sponge->getPosition());
+                }), 1);
+                $this->getScheduler()->scheduleDelayedTask(new SetBlockTask($this, $sponge->getPosition()->getWorld(), $sponge->getPosition(), VanillaBlocks::SPONGE()->setWet(true), true), 1);
             }
         }
     }
-    
-    public function onBucketUse(PlayerBucketEmptyEvent $event){
+
+    public function onBucketUse(PlayerBucketEmptyEvent $event): void {
         $block = $event->getBlockClicked();
-        $sponge = self::hasSpongeNear($block->getLevel(), $block->getX(), $block->getY(), $block->getZ());
-        if($sponge instanceof Block){
-            $this->getScheduler()->scheduleDelayedTask(new absorbWaterTask($this, new Position($sponge->getX(), $sponge->getY(), $sponge->getZ(), $sponge->getLevel())), 1);
-            $this->getScheduler()->scheduleDelayedTask(new setBlockTask($this, $sponge->getLevel(), new Vector3($sponge->getX(), $sponge->getY(), $sponge->getZ()), Block::get(Block::SPONGE, 1), true, true), 1);
-            return;
+        $sponge = $this->hasSpongeNear($block->getPosition()->getWorld(), $block->getPosition()->getX(), $block->getPosition()->getY(), $block->getPosition()->getZ());
+        if ($sponge instanceof Block) {
+            $this->getScheduler()->scheduleDelayedTask(new ClosureTask(function() use ($sponge): void {
+                $this->absorbWater($sponge->getPosition());
+            }), 1);
+            $this->getScheduler()->scheduleDelayedTask(new SetBlockTask($this, $sponge->getPosition()->getWorld(), $sponge->getPosition()->asVector3(), VanillaBlocks::SPONGE()->setWet(true), true), 1);
         }
     }
 
-    public function hasSpongeNear($world, $xBlock, $yBlock, $zBlock){
-        for($x = -1; $x <= 1; ++$x){
-            for($y = -1; $y <= 1; ++$y){
-                for($z = -1; $z <= 1; ++$z){
-                    $block = $world->getBlockAt($xBlock + $x, $yBlock + $y, $zBlock + $z);
-                    if($block->getId() == 19 and $block->getDamage() == 0){
-                        return $block;
-                    }
-                    
+    public function hasSpongeNear(World $world, int $xBlock, int $yBlock, int $zBlock): Block|bool {
+        for ($x = -1; $x <= 1; ++$x) {
+            for ($y = -1; $y <= 1; ++$y) {
+                for ($z = -1; $z <= 1; ++$z) {
+                    return $world->getBlockAt($xBlock + $x, $yBlock + $y, $zBlock + $z)->isSameState(VanillaBlocks::SPONGE()->setWet(false));
                 }
             }
         }
+
         return false;
     }
-    
-    public function absorbWater(Position $center){
-        $world = $center->getLevel();
-        $waterRemoved = 0;
+
+    public function absorbWater(Position $center): bool {
+        $world = $center->getWorld();
         $yBlock = $center->getY();
         $zBlock = $center->getZ();
         $xBlock = $center->getX();
         $radius = 5;
         $l = false;
         $touchingWater = false;
-        for($x = -1; $x <= 1; ++$x){
-            for($y = -1; $y <= 1; ++$y){
-                for($z = -1; $z <= 1; ++$z){
+        for ($x = -1; $x <= 1; ++$x) {
+            for ($y = -1; $y <= 1; ++$y) {
+                for ($z = -1; $z <= 1; ++$z) {
                     $block = $world->getBlockAt($xBlock + $x, $yBlock + $y, $zBlock + $z);
-                    if($block->getId() == 9 || $block->getId() == 8){
+                    if ($block instanceof Water) {
                         $touchingWater = true;
                     }
                 }
             }
         }
-        if($touchingWater){
-            for ($x = $center->getX()-$radius; $x <= $center->getX()+$radius; $x++) {
-                $xsqr = ($center->getX()-$x) * ($center->getX()-$x);
-                for ($y = $center->getY()-$radius; $y <= $center->getY()+$radius; $y++) {
-                    $ysqr = ($center->getY()-$y) * ($center->getY()-$y);
-                    for ($z = $center->getZ()-$radius; $z <= $center->getZ()+$radius; $z++) {
-                        $zsqr = ($center->getZ()-$z) * ($center->getZ()-$z);
-                        if(($xsqr + $ysqr + $zsqr) <= ($radius*$radius)) {
-                            if($y > 0) {
-                                $level = $center->getLevel();
-                                if($level->getBlockAt($x,$y,$z)->getId() == 9 || $level->getBlockAt($x,$y,$z)->getId() == 8){
-                                    $l = true;
-                                    $level->setBlock(new Vector3($x, $y, $z), Block::get(0,0));
-                                }
 
-                            }    
+        if ($touchingWater) {
+            for ($x = $center->getX() - $radius; $x <= $center->getX() + $radius; $x++) {
+                $xsqr = ($center->getX() - $x) * ($center->getX() - $x);
+                for ($y = $center->getY() - $radius; $y <= $center->getY() + $radius; $y++) {
+                    $ysqr = ($center->getY() - $y) * ($center->getY() - $y);
+                    for ($z = $center->getZ() - $radius; $z <= $center->getZ() + $radius; $z++) {
+                        $zsqr = ($center->getZ() - $z) * ($center->getZ() - $z);
+                        if ((($xsqr + $ysqr + $zsqr) <= ($radius * $radius)) && $y > 0 && $world->getBlockAt($x, $y, $z) instanceof Water) {
+                            $l = true;
+                            $world->setBlock(new Vector3($x, $y, $z), VanillaBlocks::AIR());
                         }
                     }
                 }
             }
         }
+
         return $l;
     }
 }
